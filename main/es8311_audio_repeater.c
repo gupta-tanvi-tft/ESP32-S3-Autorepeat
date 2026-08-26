@@ -264,10 +264,10 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x4B, 0x00);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0x00);
 
-    i2c_write_reg(ES7210_ADDR, 0x43, 0x1A);
-    i2c_write_reg(ES7210_ADDR, 0x44, 0x1A);
-    i2c_write_reg(ES7210_ADDR, 0x45, 0x1A);
-    i2c_write_reg(ES7210_ADDR, 0x46, 0x1A);
+    i2c_write_reg(ES7210_ADDR, 0x43, 0x14); // Reduced from 0x1A to 0x14 to prevent clipping
+    i2c_write_reg(ES7210_ADDR, 0x44, 0x14);
+    i2c_write_reg(ES7210_ADDR, 0x45, 0x14);
+    i2c_write_reg(ES7210_ADDR, 0x46, 0x14);
 
     /* Power on mics */
     i2c_write_reg(ES7210_ADDR, 0x47, 0x08);
@@ -334,8 +334,8 @@ static esp_err_t es8311_init(void)
     i2c_write_reg(ES8311_ADDR, 0x14, 0x1A);
     i2c_write_reg(ES8311_ADDR, 0x16, 0x00); // 0dB
 
-    /* Set volume slightly higher (was 0xBF) */
-    i2c_write_reg(ES8311_ADDR, 0x32, 0xCF);
+    /* Set volume to 0dB (0xC0) to prevent digital clipping/distortion */
+    i2c_write_reg(ES8311_ADDR, 0x32, 0xC0);
 
     /* Power up analog circuitry */
     i2c_write_reg(ES8311_ADDR, 0x0D, 0x01);
