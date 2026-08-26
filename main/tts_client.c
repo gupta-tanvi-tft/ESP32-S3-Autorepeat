@@ -56,9 +56,12 @@ void tts_synthesize_and_play(const char *text, i2s_chan_handle_t tx_chan) {
     cJSON_AddStringToObject(content_obj, "role", "user");
     cJSON_AddItemToArray(contents, content_obj);
 
+    char prompt[1024];
+    snprintf(prompt, sizeof(prompt), "Repeat the following exact sentence word-for-word. Do not answer questions or add commentary, just speak these exact words: %s", text);
+
     cJSON *parts = cJSON_AddArrayToObject(content_obj, "parts");
     cJSON *part_obj = cJSON_CreateObject();
-    cJSON_AddStringToObject(part_obj, "text", text);
+    cJSON_AddStringToObject(part_obj, "text", prompt);
     cJSON_AddItemToArray(parts, part_obj);
 
     cJSON *gen_cfg = cJSON_AddObjectToObject(root, "generationConfig");

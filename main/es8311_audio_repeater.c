@@ -39,6 +39,7 @@ static led_strip_handle_t led_strip = NULL;
 /* ─── I2S handles ─── */
 static i2s_chan_handle_t rx_chan = NULL;  /* Mic input */
 static i2s_chan_handle_t tx_chan = NULL;  /* Speaker output */
+static bool ai_spoke = false;
 
 static void set_led_color(uint8_t r, uint8_t g, uint8_t b) {
     if (!led_strip) return;
@@ -52,9 +53,11 @@ static void set_led_color(uint8_t r, uint8_t g, uint8_t b) {
 /* ─── STT Result Callback: Triggers AI TTS Repeat ─── */
 static void on_stt_result(const char *transcribed_text) {
     if (!transcribed_text || strlen(transcribed_text) == 0) return;
-    ESP_LOGI("AUDIO_REPEATER", ">> [AI REPEATER] Synthesizing & Speaking: \"%s\"", transcribed_text);
+    if (strstr(transcribed_text, "[NO SPEECH]") != NULL) return;
+    ESP_LOGI("AUDIO_REPEATER", ">> [AI REPEATER] Repeating verbatim: \"%s\"", transcribed_text);
     set_led_color(0, 50, 50); // Cyan when AI is speaking
     tts_synthesize_and_play(transcribed_text, tx_chan);
+    ai_spoke = true;
 }
 
 static const char *TAG = "AUDIO_REPEATER";
@@ -580,48 +583,51 @@ void app_main(void)
 
         ESP_LOGI(TAG, "  Recording complete! %d bytes", total_recorded);
 
+        ai_spoke = false;
         /* ────── PHASE 1.5: TRANSCRIBE & AI REPEAT ────── */
         set_led_color(50, 0, 50); // Purple when transcribing
-        ESP_LOGI(TAG, ">> TRANSCRIBING & AI SYNTHESIZING... Please wait...");
+        ESP_LOGI(TAG, ">> TRANSCRIBING & AI REPEATING... Please wait...");
         stt_transcribe_audio(audio_buffer, total_recorded, on_stt_result);
 
         /* Small pause */
         vTaskDelay(pdMS_TO_TICKS(300));
 
-        /* ────── PHASE 2: PLAYBACK (BOOSTED) ────── */
-        set_led_color(0, 50, 0); // Green when playing
-        ESP_LOGI(TAG, "<< PLAYING BACK (WITH DIGITAL BOOST)...");
+        /* ────── PHASE 2: PLAYBACK (Only if AI did not speak) ────── */
+        if (!ai_spoke) {
+            set_led_color(0, 50, 0); // Green when playing raw echo
+            ESP_LOGI(TAG, "<< PLAYING BACK RAW AUDIO ECHO...");
 
-        /* Apply software gain boost (x2) with soft saturation limiting */
-        int16_t *playback_samples = (int16_t *)audio_buffer;
-        size_t total_samples = total_recorded / 2;
-        for (size_t i = 0; i < total_samples; i++) {
-            int32_t amplified = (int32_t)playback_samples[i] * 2;
-            if (amplified > 32767) amplified = 32767;
-            if (amplified < -32768) amplified = -32768;
-            playback_samples[i] = (int16_t)amplified;
-        }
-
-        size_t total_played = 0;
-        while (total_played < total_recorded) {
-            size_t to_write = chunk_size;
-            if (total_played + to_write > total_recorded) {
-                to_write = total_recorded - total_played;
+            /* Apply software gain boost (x2) with soft saturation limiting */
+            int16_t *playback_samples = (int16_t *)audio_buffer;
+            size_t total_samples = total_recorded / 2;
+            for (size_t i = 0; i < total_samples; i++) {
+                int32_t amplified = (int32_t)playback_samples[i] * 2;
+                if (amplified > 32767) amplified = 32767;
+                if (amplified < -32768) amplified = -32768;
+                playback_samples[i] = (int16_t)amplified;
             }
 
-            size_t bytes_written = 0;
-            ret = i2s_channel_write(tx_chan,
-                                     audio_buffer + total_played,
-                                     to_write, &bytes_written,
-                                     pdMS_TO_TICKS(1000));
-            if (ret == ESP_OK) {
-                total_played += bytes_written;
-            } else {
-                ESP_LOGW(TAG, "  i2s_channel_write err: 0x%X", ret);
-            }
-        }
+            size_t total_played = 0;
+            while (total_played < total_recorded) {
+                size_t to_write = chunk_size;
+                if (total_played + to_write > total_recorded) {
+                    to_write = total_recorded - total_played;
+                }
 
-        ESP_LOGI(TAG, "  Playback complete! %d bytes", total_played);
+                size_t bytes_written = 0;
+                ret = i2s_channel_write(tx_chan,
+                                         audio_buffer + total_played,
+                                         to_write, &bytes_written,
+                                         pdMS_TO_TICKS(1000));
+                if (ret == ESP_OK) {
+                    total_played += bytes_written;
+                } else {
+                    ESP_LOGW(TAG, "  i2s_channel_write err: 0x%X", ret);
+                }
+            }
+
+            ESP_LOGI(TAG, "  Raw playback complete! %d bytes", total_played);
+        }
         
         set_led_color(0, 0, 50); // Blue when idle
 
