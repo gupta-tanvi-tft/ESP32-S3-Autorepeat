@@ -276,10 +276,10 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x4B, 0x00);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0x00);
 
-    i2c_write_reg(ES7210_ADDR, 0x43, 0x0E); // +37.5dB PGA Gain
-    i2c_write_reg(ES7210_ADDR, 0x44, 0x0E);
-    i2c_write_reg(ES7210_ADDR, 0x45, 0x0E);
-    i2c_write_reg(ES7210_ADDR, 0x46, 0x0E);
+    i2c_write_reg(ES7210_ADDR, 0x43, 0x06); // +18dB clean Gain (prevents 32512 clipping)
+    i2c_write_reg(ES7210_ADDR, 0x44, 0x06);
+    i2c_write_reg(ES7210_ADDR, 0x45, 0x06);
+    i2c_write_reg(ES7210_ADDR, 0x46, 0x06);
 
     /* Power on mics */
     i2c_write_reg(ES7210_ADDR, 0x47, 0x08);
@@ -565,10 +565,13 @@ void app_main(void)
                                     pdMS_TO_TICKS(1000));
                                     
             if (ret == ESP_OK && bytes_read > 0) {
-                /* Calculate max amplitude for debugging */
+                /* Calculate max amplitude for debugging and balance stereo */
                 int16_t *samples = (int16_t *)(audio_buffer + total_recorded);
                 int num_samples = bytes_read / 4; /* 2 channels, 2 bytes per sample = 4 bytes/frame */
                 for (int i = 0; i < num_samples; i++) {
+                    /* Copy active MIC1 (Left) to MIC2 (Right) for balanced stereo */
+                    samples[i * 2 + 1] = samples[i * 2];
+
                     int16_t val_L = samples[i * 2];
                     int16_t val_R = samples[i * 2 + 1];
                     if (val_L < 0) val_L = -val_L;
