@@ -251,8 +251,8 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x11, 0x60);
 
     /* Sample rate: 16kHz with 4.096MHz MCLK */
-    /* adc_div=1, doubler=1, dll=1 -> 0x01 | 0x40 | 0x80 = 0xC1 */
-    i2c_write_reg(ES7210_ADDR, 0x02, 0xC1);
+    /* adc_div=1, doubler=0, dll=1 -> 0x01 | 0x00 | 0x80 = 0x81 */
+    i2c_write_reg(ES7210_ADDR, 0x02, 0x81); // FIX: Was 0xC1 (doubler enabled). 0x81 disabled doubler.
     i2c_write_reg(ES7210_ADDR, 0x07, 0x20); // OSR
     i2c_write_reg(ES7210_ADDR, 0x04, 0x01); // LRCK_H
     i2c_write_reg(ES7210_ADDR, 0x05, 0x00); // LRCK_L
@@ -318,7 +318,7 @@ static esp_err_t es8311_init(void)
 
     /* Clock config (16kHz with 4.096MHz MCLK) */
     i2c_write_reg(ES8311_ADDR, 0x01, 0x3F);
-    i2c_write_reg(ES8311_ADDR, 0x02, 0x08);
+    i2c_write_reg(ES8311_ADDR, 0x02, 0x00); // FIX: Was 0x08 (mult x2). 0x00 is mult x1.
     i2c_write_reg(ES8311_ADDR, 0x03, 0x10);
     i2c_write_reg(ES8311_ADDR, 0x04, 0x20);
     i2c_write_reg(ES8311_ADDR, 0x05, 0x00);
@@ -394,11 +394,6 @@ static esp_err_t i2s_init(void)
             },
         },
     };
-
-    /* CRITICAL FIX FOR ROBOTIC AUDIO: 
-       Codecs expect BCLK to be 64*Fs. By forcing the slot width to 32 bits (while keeping data at 16 bits),
-       ESP-IDF will generate a 64*Fs BCLK. The 16-bit data will be padded with zeros. */
-    std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
 
     /* Init both TX and RX with the same config */
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_chan, &std_cfg));
