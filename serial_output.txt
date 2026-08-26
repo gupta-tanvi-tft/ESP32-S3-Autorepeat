@@ -1,0 +1,13 @@
+I (22722) AUDIO_REPEATER:   Playback complete! 192000 bytes
+I (22722) AUDIO_REPEATER: 
+I (22722) AUDIO_REPEATER:   Cycle done. Next recording in 2s...
+I (22722) AUDIO_REPEATER: 
+I (24732) AUDIO_REPEATER: >> RECORDING... Speak now! (3 seconds)
+I (25142) AUDIO_REPEATER:   Recording: 0.5 / 3 s (Max Amp L: 353, R: 269)
+I (25652) AUDIO_REPEATER:   Recording: 1.0 / 3 s (Max Amp L: 357, R: 288)
+I (26162) AUDIO_REPEATER:   Recording: 1.5 / 3 s (Max Amp L: 339, R: 309)
+I (26672) AUDIO_REPEATER:   Recording: 2.0 / 3 s (Max Amp L: 346, R: 285)
+I (27182) AUDIO_REPEATER:   Recording: 2.6 / 3 s (Max Amp L: 368, R: 366)
+I (27612) AUDIO_REPEATER:   Recording complete! 192000 bytes
+I (27912) AUDIO_REPEATER: << PLAYING BACK...
+I (30792) AUDIO_REPEATER:   Playback complete! 192000 bytes
