@@ -36,6 +36,10 @@
 #define LED_STRIP_NUM  7
 static led_strip_handle_t led_strip = NULL;
 
+/* ─── I2S handles ─── */
+static i2s_chan_handle_t rx_chan = NULL;  /* Mic input */
+static i2s_chan_handle_t tx_chan = NULL;  /* Speaker output */
+
 static void set_led_color(uint8_t r, uint8_t g, uint8_t b) {
     if (!led_strip) return;
     led_strip_clear(led_strip);
@@ -136,10 +140,6 @@ static const char *TAG = "AUDIO_REPEATER";
 #define ES8311_REG44_GPIO           0x44
 #define ES8311_REGFD_CHD1           0xFD
 #define ES8311_REGFE_CHD2           0xFE
-
-/* ─── I2S handles ─── */
-static i2s_chan_handle_t rx_chan = NULL;  /* Mic input */
-static i2s_chan_handle_t tx_chan = NULL;  /* Speaker output */
 
 /*
  * ────────────────────────────────────────────────
