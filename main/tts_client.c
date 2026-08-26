@@ -132,19 +132,26 @@ void tts_synthesize_and_play(const char *text, i2s_chan_handle_t tx_chan) {
                                     mbedtls_base64_decode(pcm_out, pcm_cap, &pcm_len,
                                                           (const unsigned char *)data_item->valuestring, b64_len);
 
-                                    ESP_LOGI(TAG, ">>> PLAYING AI SYNTHESIZED VOICE (Resampling 24kHz -> 16kHz, %d bytes) <<<", pcm_len);
+                                    ESP_LOGI(TAG, ">>> PLAYING AI SYNTHESIZED VOICE (Linear Interpolation 24kHz -> 16kHz, %d bytes) <<<", pcm_len);
 
-                                    /* Resample 24kHz Mono PCM to 16kHz Stereo PCM for ES8311 I2S */
+                                    /* Resample 24kHz Mono PCM to 16kHz Stereo PCM with Linear Interpolation */
                                     size_t in_samples = pcm_len / 2;
                                     int16_t *in_pcm = (int16_t *)pcm_out;
-                                    size_t out_samples = (in_samples * 16000) / 24000;
+                                    size_t out_samples = (in_samples * 2) / 3;
                                     int16_t *stereo_buf = heap_caps_malloc(out_samples * 4, MALLOC_CAP_SPIRAM);
                                     if (stereo_buf) {
                                         for (size_t i = 0; i < out_samples; i++) {
-                                            uint32_t src_pos = (i * 24000) / 16000;
-                                            int16_t val = (src_pos < in_samples) ? in_pcm[src_pos] : 0;
-                                            stereo_buf[i * 2]     = val; // Left
-                                            stereo_buf[i * 2 + 1] = val; // Right
+                                            size_t idx = (i * 3) / 2;
+                                            int32_t val;
+                                            if ((i & 1) == 0) {
+                                                val = (idx < in_samples) ? in_pcm[idx] : 0;
+                                            } else {
+                                                int32_t s0 = (idx < in_samples) ? in_pcm[idx] : 0;
+                                                int32_t s1 = (idx + 1 < in_samples) ? in_pcm[idx + 1] : s0;
+                                                val = (s0 + s1) / 2;
+                                            }
+                                            stereo_buf[i * 2]     = (int16_t)val; // Left
+                                            stereo_buf[i * 2 + 1] = (int16_t)val; // Right
                                         }
 
                                         size_t total_written = 0;

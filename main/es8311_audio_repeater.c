@@ -382,7 +382,7 @@ static esp_err_t i2s_init(void)
     /* Create full-duplex channel: TX + RX on the same controller */
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = 8;
-    chan_cfg.dma_frame_num = 240;
+    chan_cfg.dma_frame_num = 512; // 512 frames = 32ms robust buffer
     ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &tx_chan, &rx_chan));
 
     /* Standard I2S Philips mode config */
