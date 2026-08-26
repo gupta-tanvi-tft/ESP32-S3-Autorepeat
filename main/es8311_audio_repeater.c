@@ -259,27 +259,27 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x41, 0x70);
     i2c_write_reg(ES7210_ADDR, 0x42, 0x70);
 
-    /* I2S Format: 16-bit (0x60) */
-    i2c_write_reg(ES7210_ADDR, 0x11, 0x60);
+    /* I2S Format: 16-bit I2S Standard Philips Mode (0x00) */
+    i2c_write_reg(ES7210_ADDR, 0x11, 0x00);
 
     /* Sample rate: 16kHz with 4.096MHz MCLK */
     /* adc_div=1, doubler=0, dll=1 -> 0x01 | 0x00 | 0x80 = 0x81 */
-    i2c_write_reg(ES7210_ADDR, 0x02, 0x81); // FIX: Was 0xC1 (doubler enabled). 0x81 disabled doubler.
+    i2c_write_reg(ES7210_ADDR, 0x02, 0x81);
     i2c_write_reg(ES7210_ADDR, 0x07, 0x20); // OSR
     i2c_write_reg(ES7210_ADDR, 0x04, 0x01); // LRCK_H
     i2c_write_reg(ES7210_ADDR, 0x05, 0x00); // LRCK_L
 
-    /* Mic gains (+37.5dB max clean unmuted capture) */
+    /* Mic gains (+37.5dB max clean hardware capture) */
     i2c_write_reg(ES7210_ADDR, 0x4B, 0xFF);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0xFF);
     i2c_write_reg(ES7210_ADDR, 0x01, 0x00); 
     i2c_write_reg(ES7210_ADDR, 0x4B, 0x00);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0x00);
 
-    i2c_write_reg(ES7210_ADDR, 0x43, 0x1E);
-    i2c_write_reg(ES7210_ADDR, 0x44, 0x1E);
-    i2c_write_reg(ES7210_ADDR, 0x45, 0x1E);
-    i2c_write_reg(ES7210_ADDR, 0x46, 0x1E);
+    i2c_write_reg(ES7210_ADDR, 0x43, 0x0E); // +37.5dB PGA Gain
+    i2c_write_reg(ES7210_ADDR, 0x44, 0x0E);
+    i2c_write_reg(ES7210_ADDR, 0x45, 0x0E);
+    i2c_write_reg(ES7210_ADDR, 0x46, 0x0E);
 
     /* Power on mics */
     i2c_write_reg(ES7210_ADDR, 0x47, 0x08);
