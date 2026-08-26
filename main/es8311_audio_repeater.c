@@ -236,16 +236,16 @@ static esp_err_t es7210_init(void)
     }
     ESP_LOGI(TAG, "ES7210 detected at 0x%02X", ES7210_ADDR);
 
-    /* Software Reset */
+    /* Software reset */
     i2c_write_reg(ES7210_ADDR, 0x00, 0xFF);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    i2c_write_reg(ES7210_ADDR, 0x00, 0x41);
+    i2c_write_reg(ES7210_ADDR, 0x00, 0x32);
+    i2c_write_reg(ES7210_ADDR, 0x01, 0x3F);
 
     /* Initialization time when device powers up */
     i2c_write_reg(ES7210_ADDR, 0x09, 0x30);
     i2c_write_reg(ES7210_ADDR, 0x0A, 0x30);
 
-    /* Configure Digital HPF */
+    /* Configure HPF */
     i2c_write_reg(ES7210_ADDR, 0x23, 0x2A);
     i2c_write_reg(ES7210_ADDR, 0x22, 0x0A);
     i2c_write_reg(ES7210_ADDR, 0x20, 0x0A);
@@ -259,40 +259,52 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x41, 0x70);
     i2c_write_reg(ES7210_ADDR, 0x42, 0x70);
 
-    /* I2S Format: 16-bit I2S Standard Philips Mode (0x00) */
-    i2c_write_reg(ES7210_ADDR, 0x11, 0x00);
-    i2c_write_reg(ES7210_ADDR, 0x12, 0x00);
+    /* I2S Format: 16-bit (0x60) */
+    i2c_write_reg(ES7210_ADDR, 0x11, 0x60);
 
     /* Sample rate: 16kHz with 4.096MHz MCLK */
-    i2c_write_reg(ES7210_ADDR, 0x02, 0x01);
+    /* adc_div=1, doubler=0, dll=1 -> 0x01 | 0x00 | 0x80 = 0x81 */
+    i2c_write_reg(ES7210_ADDR, 0x02, 0x81);
     i2c_write_reg(ES7210_ADDR, 0x07, 0x20); // OSR
     i2c_write_reg(ES7210_ADDR, 0x04, 0x01); // LRCK_H
     i2c_write_reg(ES7210_ADDR, 0x05, 0x00); // LRCK_L
-    i2c_write_reg(ES7210_ADDR, 0x06, 0x00); // DLL Normal
 
-    /* Power up microphone inputs (0x00 = Power On MIC1-4) */
-    i2c_write_reg(ES7210_ADDR, 0x47, 0x00);
-    i2c_write_reg(ES7210_ADDR, 0x48, 0x00);
-    i2c_write_reg(ES7210_ADDR, 0x49, 0x00);
-    i2c_write_reg(ES7210_ADDR, 0x4A, 0x00);
+    /* Mic gains (+30dB clean microphone capture) */
+    i2c_write_reg(ES7210_ADDR, 0x4B, 0xFF);
+    i2c_write_reg(ES7210_ADDR, 0x4C, 0xFF);
+    i2c_write_reg(ES7210_ADDR, 0x01, 0x00); 
+    i2c_write_reg(ES7210_ADDR, 0x4B, 0x00);
+    i2c_write_reg(ES7210_ADDR, 0x4C, 0x00);
 
-    /* Mic PGA gains (+21dB clean hardware gain) */
-    i2c_write_reg(ES7210_ADDR, 0x43, 0x17);
-    i2c_write_reg(ES7210_ADDR, 0x44, 0x17);
-    i2c_write_reg(ES7210_ADDR, 0x45, 0x17);
-    i2c_write_reg(ES7210_ADDR, 0x46, 0x17);
+    i2c_write_reg(ES7210_ADDR, 0x43, 0x1E); // 0x1E = +30dB clean capture
+    i2c_write_reg(ES7210_ADDR, 0x44, 0x1E);
+    i2c_write_reg(ES7210_ADDR, 0x45, 0x1E);
+    i2c_write_reg(ES7210_ADDR, 0x46, 0x1E);
+
+    /* Power on mics */
+    i2c_write_reg(ES7210_ADDR, 0x47, 0x08);
+    i2c_write_reg(ES7210_ADDR, 0x48, 0x08);
+    i2c_write_reg(ES7210_ADDR, 0x49, 0x08);
+    i2c_write_reg(ES7210_ADDR, 0x4A, 0x08);
+
+    /* Power down DLL */
+    i2c_write_reg(ES7210_ADDR, 0x06, 0x04);
 
     /* Power on bias, ADC, PGA */
     i2c_write_reg(ES7210_ADDR, 0x4B, 0x00);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0x00);
 
+    /* I2S Interface 2 (Routing) */
+    i2c_write_reg(ES7210_ADDR, 0x12, 0x00);
+
     /* Turn on ALL clocks */
     i2c_write_reg(ES7210_ADDR, 0x01, 0x00);
 
-    /* Enable device normal operation */
-    i2c_write_reg(ES7210_ADDR, 0x00, 0x01);
+    /* Enable device */
+    i2c_write_reg(ES7210_ADDR, 0x00, 0x71);
+    i2c_write_reg(ES7210_ADDR, 0x00, 0x41);
 
-    ESP_LOGI(TAG, "ES7210 microphone ADC initialized with +21dB gain");
+    ESP_LOGI(TAG, "ES7210 microphone ADC initialized cleanly");
     return ESP_OK;
 }
 
@@ -553,13 +565,10 @@ void app_main(void)
                                     pdMS_TO_TICKS(1000));
                                     
             if (ret == ESP_OK && bytes_read > 0) {
-                /* Calculate max amplitude for debugging and balance stereo */
+                /* Calculate max amplitude for debugging */
                 int16_t *samples = (int16_t *)(audio_buffer + total_recorded);
                 int num_samples = bytes_read / 4; /* 2 channels, 2 bytes per sample = 4 bytes/frame */
                 for (int i = 0; i < num_samples; i++) {
-                    /* Copy active MIC1 (Left) to MIC2 (Right) for balanced stereo */
-                    samples[i * 2 + 1] = samples[i * 2];
-
                     int16_t val_L = samples[i * 2];
                     int16_t val_R = samples[i * 2 + 1];
                     if (val_L < 0) val_L = -val_L;
