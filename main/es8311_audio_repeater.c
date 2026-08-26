@@ -78,7 +78,7 @@ static const char *TAG = "AUDIO_REPEATER";
 #define SAMPLE_RATE     16000          /* 16 kHz — good for voice */
 #define BITS_PER_SAMPLE 16
 #define CHANNELS        2              /* Stereo */
-#define RECORD_SECONDS  4
+#define RECORD_SECONDS  5
 #define BYTES_PER_SAMPLE (BITS_PER_SAMPLE / 8)
 #define RECORD_SIZE     (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * RECORD_SECONDS)
 
@@ -532,6 +532,10 @@ void app_main(void)
 
     while (1) {
         /* ────── PHASE 1: RECORDING ────── */
+        /* Flush RX channel DMA buffer for clean capture */
+        i2s_channel_disable(rx_chan);
+        i2s_channel_enable(rx_chan);
+
         set_led_color(50, 50, 0); // Yellow when listening
         play_start_chime();
         ESP_LOGI(TAG, "🔔 [BEEP] >> RECORDING OPEN! SPEAK NOW! (%d seconds)", RECORD_SECONDS);
