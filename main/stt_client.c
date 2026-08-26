@@ -16,7 +16,7 @@
 #define WIFI_SSID "TFTus-WiFi"
 #define WIFI_PASS "TFTus@123#$"
 #define GEMINI_API_KEY "YOUR_API_KEY_HERE"
-#define GEMINI_MODEL "models/gemini-2.5-flash-native-audio-latest"
+#define GEMINI_MODEL "models/gemini-1.5-flash"
 
 #define SAMPLE_RATE 16000
 #define BITS_PER_SAMPLE 16
@@ -25,6 +25,13 @@
 static const char *TAG = "STT_CLIENT";
 static EventGroupHandle_t wifi_event_group;
 const int WIFI_CONNECTED_BIT = BIT0;
+
+/* Response accumulation buffer */
+typedef struct {
+    char *buffer;
+    size_t len;
+    size_t cap;
+} response_buf_t;
 
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
@@ -93,10 +100,15 @@ static void add_wav_header(uint8_t *header, uint32_t pcm_data_len) {
 }
 
 esp_err_t http_event_handler(esp_http_client_event_t *evt) {
+    response_buf_t *resp = (response_buf_t *)evt->user_data;
     switch (evt->event_id) {
         case HTTP_EVENT_ON_DATA:
-            if (!esp_http_client_is_chunked_response(evt->client)) {
-                printf("%.*s", evt->data_len, (char*)evt->data);
+            if (resp && resp->buffer && evt->data_len > 0) {
+                if (resp->len + evt->data_len < resp->cap - 1) {
+                    memcpy(resp->buffer + resp->len, evt->data, evt->data_len);
+                    resp->len += evt->data_len;
+                    resp->buffer[resp->len] = '\0';
+                }
             }
             break;
         default:
@@ -105,7 +117,7 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len) {
+void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t callback) {
     ESP_LOGI(TAG, "Preparing audio for Gemini API...");
     size_t wav_size = 44 + pcm_len;
     uint8_t *wav_buf = heap_caps_malloc(wav_size, MALLOC_CAP_SPIRAM);
@@ -118,13 +130,15 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len) {
 
     size_t b64_len = 0;
     mbedtls_base64_encode(NULL, 0, &b64_len, wav_buf, wav_size);
-    char *b64_str = heap_caps_malloc(b64_len, MALLOC_CAP_SPIRAM);
+    char *b64_str = heap_caps_malloc(b64_len + 1, MALLOC_CAP_SPIRAM);
     if (!b64_str) {
         ESP_LOGE(TAG, "Failed to allocate memory for Base64");
         heap_caps_free(wav_buf);
         return;
     }
-    mbedtls_base64_encode((unsigned char *)b64_str, b64_len, &b64_len, wav_buf, wav_size);
+    size_t dlen = 0;
+    mbedtls_base64_encode((unsigned char *)b64_str, b64_len + 1, &dlen, wav_buf, wav_size);
+    b64_str[dlen] = '\0'; // Ensure valid null-terminated string for cJSON
     heap_caps_free(wav_buf);
 
     ESP_LOGI(TAG, "Building JSON payload...");
@@ -135,7 +149,7 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len) {
     
     cJSON *parts = cJSON_AddArrayToObject(content_obj, "parts");
     cJSON *text_part = cJSON_CreateObject();
-    cJSON_AddStringToObject(text_part, "text", "Please transcribe this audio accurately. Reply with ONLY the transcription, without any extra text.");
+    cJSON_AddStringToObject(text_part, "text", "Transcribe this audio verbatim. Output only the plain transcribed words.");
     cJSON_AddItemToArray(parts, text_part);
     
     cJSON *inline_part = cJSON_CreateObject();
@@ -158,10 +172,20 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len) {
     char url[256];
     snprintf(url, sizeof(url), "https://generativelanguage.googleapis.com/v1beta/%s:generateContent?key=%s", GEMINI_MODEL, GEMINI_API_KEY);
     
+    response_buf_t resp = {
+        .cap = 16384,
+        .len = 0,
+        .buffer = heap_caps_malloc(16384, MALLOC_CAP_SPIRAM),
+    };
+    if (resp.buffer) {
+        resp.buffer[0] = '\0';
+    }
+
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_POST,
         .event_handler = http_event_handler,
+        .user_data = &resp,
         .buffer_size = 4096,
         .timeout_ms = 30000,
     };
@@ -169,15 +193,45 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len) {
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, post_data, strlen(post_data));
     
-    printf("\n--- API Response Start ---\n");
     esp_err_t err = esp_http_client_perform(client);
-    if (err == ESP_OK) {
-        printf("\n--- API Response End ---\n");
-        ESP_LOGI(TAG, "HTTP Status = %d", esp_http_client_get_status_code(client));
+    int status_code = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "HTTP Status = %d", status_code);
+
+    if (err == ESP_OK && status_code == 200 && resp.buffer && resp.len > 0) {
+        cJSON *resp_json = cJSON_Parse(resp.buffer);
+        if (resp_json) {
+            cJSON *candidates = cJSON_GetObjectItem(resp_json, "candidates");
+            if (candidates && cJSON_GetArraySize(candidates) > 0) {
+                cJSON *cand0 = cJSON_GetArrayItem(candidates, 0);
+                cJSON *content = cJSON_GetObjectItem(cand0, "content");
+                if (content) {
+                    cJSON *parts_arr = cJSON_GetObjectItem(content, "parts");
+                    if (parts_arr && cJSON_GetArraySize(parts_arr) > 0) {
+                        cJSON *part0 = cJSON_GetArrayItem(parts_arr, 0);
+                        cJSON *text_item = cJSON_GetObjectItem(part0, "text");
+                        if (text_item && text_item->valuestring) {
+                            ESP_LOGI(TAG, "==========================================");
+                            ESP_LOGI(TAG, ">>> TRANSCRIBED SPEECH: \"%s\"", text_item->valuestring);
+                            ESP_LOGI(TAG, "==========================================");
+                            if (callback) {
+                                callback(text_item->valuestring);
+                            }
+                        }
+                    }
+                }
+            }
+            cJSON_Delete(resp_json);
+        }
     } else {
-        ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+        if (resp.buffer && resp.len > 0) {
+            ESP_LOGW(TAG, "Error Response Body: %s", resp.buffer);
+        }
+        ESP_LOGE(TAG, "HTTP request failed or non-200 status: %s", esp_err_to_name(err));
     }
     
+    if (resp.buffer) {
+        heap_caps_free(resp.buffer);
+    }
     esp_http_client_cleanup(client);
     free(post_data);
 }
