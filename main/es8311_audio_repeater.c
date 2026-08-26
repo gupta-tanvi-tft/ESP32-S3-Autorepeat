@@ -30,6 +30,7 @@
 #include "esp_system.h"
 #include "led_strip.h"
 #include "stt_client.h"
+#include "tts_client.h"
 
 #define LED_STRIP_GPIO GPIO_NUM_38
 #define LED_STRIP_NUM  7
@@ -42,6 +43,14 @@ static void set_led_color(uint8_t r, uint8_t g, uint8_t b) {
         led_strip_set_pixel(led_strip, i, r, g, b);
     }
     led_strip_refresh(led_strip);
+}
+
+/* ─── STT Result Callback: Triggers AI TTS Repeat ─── */
+static void on_stt_result(const char *transcribed_text) {
+    if (!transcribed_text || strlen(transcribed_text) == 0) return;
+    ESP_LOGI("AUDIO_REPEATER", ">> [AI REPEATER] Synthesizing & Speaking: \"%s\"", transcribed_text);
+    set_led_color(0, 50, 50); // Cyan when AI is speaking
+    tts_synthesize_and_play(transcribed_text, tx_chan);
 }
 
 static const char *TAG = "AUDIO_REPEATER";
@@ -571,10 +580,10 @@ void app_main(void)
 
         ESP_LOGI(TAG, "  Recording complete! %d bytes", total_recorded);
 
-        /* ────── PHASE 1.5: TRANSCRIBE AUDIO ────── */
-        set_led_color(50, 0, 50); // Purple when thinking/transcribing
-        ESP_LOGI(TAG, ">> TRANSCRIBING... Please wait...");
-        stt_transcribe_audio(audio_buffer, total_recorded);
+        /* ────── PHASE 1.5: TRANSCRIBE & AI REPEAT ────── */
+        set_led_color(50, 0, 50); // Purple when transcribing
+        ESP_LOGI(TAG, ">> TRANSCRIBING & AI SYNTHESIZING... Please wait...");
+        stt_transcribe_audio(audio_buffer, total_recorded, on_stt_result);
 
         /* Small pause */
         vTaskDelay(pdMS_TO_TICKS(300));
