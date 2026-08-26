@@ -346,8 +346,8 @@ static esp_err_t es8311_init(void)
     i2c_write_reg(ES8311_ADDR, 0x14, 0x1A);
     i2c_write_reg(ES8311_ADDR, 0x16, 0x00); // 0dB
 
-    /* Set volume to lower, gentle level (-5dB / 0xB6) */
-    i2c_write_reg(ES8311_ADDR, 0x32, 0xB6);
+    /* Set volume to lower, smooth level (-10dB / 0xAC) */
+    i2c_write_reg(ES8311_ADDR, 0x32, 0xAC);
 
     /* Power up analog circuitry */
     i2c_write_reg(ES8311_ADDR, 0x0D, 0x01);

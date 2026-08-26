@@ -132,20 +132,23 @@ void tts_synthesize_and_play(const char *text, i2s_chan_handle_t tx_chan) {
                                     mbedtls_base64_decode(pcm_out, pcm_cap, &pcm_len,
                                                           (const unsigned char *)data_item->valuestring, b64_len);
 
-                                    ESP_LOGI(TAG, ">>> PLAYING AI SYNTHESIZED VOICE (%d bytes PCM) <<<", pcm_len);
+                                    ESP_LOGI(TAG, ">>> PLAYING AI SYNTHESIZED VOICE (Resampling 24kHz -> 16kHz, %d bytes) <<<", pcm_len);
 
-                                    /* Convert Mono 16-bit to Stereo 16-bit for I2S output */
-                                    size_t samples = pcm_len / 2;
-                                    int16_t *mono_pcm = (int16_t *)pcm_out;
-                                    int16_t *stereo_buf = heap_caps_malloc(samples * 4, MALLOC_CAP_SPIRAM);
+                                    /* Resample 24kHz Mono PCM to 16kHz Stereo PCM for ES8311 I2S */
+                                    size_t in_samples = pcm_len / 2;
+                                    int16_t *in_pcm = (int16_t *)pcm_out;
+                                    size_t out_samples = (in_samples * 16000) / 24000;
+                                    int16_t *stereo_buf = heap_caps_malloc(out_samples * 4, MALLOC_CAP_SPIRAM);
                                     if (stereo_buf) {
-                                        for (size_t i = 0; i < samples; i++) {
-                                            stereo_buf[i * 2]     = mono_pcm[i]; // Left
-                                            stereo_buf[i * 2 + 1] = mono_pcm[i]; // Right
+                                        for (size_t i = 0; i < out_samples; i++) {
+                                            uint32_t src_pos = (i * 24000) / 16000;
+                                            int16_t val = (src_pos < in_samples) ? in_pcm[src_pos] : 0;
+                                            stereo_buf[i * 2]     = val; // Left
+                                            stereo_buf[i * 2 + 1] = val; // Right
                                         }
 
                                         size_t total_written = 0;
-                                        size_t total_to_write = samples * 4;
+                                        size_t total_to_write = out_samples * 4;
                                         const size_t chunk_size = 1024;
 
                                         while (total_written < total_to_write) {
