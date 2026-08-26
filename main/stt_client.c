@@ -72,9 +72,8 @@ void wifi_init_sta(void) {
     xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 }
 
-static void add_wav_header(uint8_t *header, uint32_t pcm_data_len) {
+static void add_wav_header(uint8_t *header, uint32_t pcm_data_len, uint16_t num_channels) {
     uint32_t sample_rate = SAMPLE_RATE;
-    uint16_t num_channels = CHANNELS;
     uint16_t bits_per_sample = BITS_PER_SAMPLE;
     uint32_t byte_rate = sample_rate * num_channels * (bits_per_sample / 8);
     
@@ -118,15 +117,25 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
 }
 
 void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t callback) {
-    ESP_LOGI(TAG, "Preparing audio for Gemini API...");
-    size_t wav_size = 44 + pcm_len;
+    ESP_LOGI(TAG, "Preparing mono audio for Gemini API...");
+
+    /* Convert stereo 16-bit PCM to clean mono 16-bit PCM */
+    size_t num_frames = pcm_len / 4;
+    size_t mono_pcm_len = num_frames * 2;
+    size_t wav_size = 44 + mono_pcm_len;
+
     uint8_t *wav_buf = heap_caps_malloc(wav_size, MALLOC_CAP_SPIRAM);
     if (!wav_buf) {
         ESP_LOGE(TAG, "Failed to allocate memory for WAV buffer");
         return;
     }
-    add_wav_header(wav_buf, pcm_len);
-    memcpy(wav_buf + 44, pcm_data, pcm_len);
+    add_wav_header(wav_buf, mono_pcm_len, 1); // 1 = Mono
+
+    int16_t *src_stereo = (int16_t *)pcm_data;
+    int16_t *dst_mono = (int16_t *)(wav_buf + 44);
+    for (size_t i = 0; i < num_frames; i++) {
+        dst_mono[i] = src_stereo[i * 2]; // Extract Left/primary mic channel
+    }
 
     size_t b64_len = 0;
     mbedtls_base64_encode(NULL, 0, &b64_len, wav_buf, wav_size);
