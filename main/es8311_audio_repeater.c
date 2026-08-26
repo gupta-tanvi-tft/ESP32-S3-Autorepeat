@@ -395,6 +395,11 @@ static esp_err_t i2s_init(void)
         },
     };
 
+    /* CRITICAL FIX FOR ROBOTIC AUDIO: 
+       Codecs expect BCLK to be 64*Fs. By forcing the slot width to 32 bits (while keeping data at 16 bits),
+       ESP-IDF will generate a 64*Fs BCLK. The 16-bit data will be padded with zeros. */
+    std_cfg.slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+
     /* Init both TX and RX with the same config */
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_chan, &std_cfg));
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_chan, &std_cfg));
