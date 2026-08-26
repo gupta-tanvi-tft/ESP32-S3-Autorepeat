@@ -420,6 +420,17 @@ static esp_err_t i2s_init(void)
     return ESP_OK;
 }
 
+static void play_start_chime(void) {
+    int16_t chime[1600 * 2]; // 100ms 16kHz stereo chime
+    for (int i = 0; i < 1600; i++) {
+        int16_t val = (i % 20 < 10) ? 5000 : -5000;
+        chime[i * 2] = val;
+        chime[i * 2 + 1] = val;
+    }
+    size_t bw;
+    i2s_channel_write(tx_chan, chime, sizeof(chime), &bw, pdMS_TO_TICKS(500));
+}
+
 /*
  * ────────────────────────────────────────────────
  *  Main Application
@@ -522,7 +533,8 @@ void app_main(void)
     while (1) {
         /* ────── PHASE 1: RECORDING ────── */
         set_led_color(50, 50, 0); // Yellow when listening
-        ESP_LOGI(TAG, ">> RECORDING... Speak now! (%d seconds)", RECORD_SECONDS);
+        play_start_chime();
+        ESP_LOGI(TAG, "🔔 [BEEP] >> RECORDING OPEN! SPEAK NOW! (%d seconds)", RECORD_SECONDS);
 
         size_t total_recorded = 0;
         memset(audio_buffer, 0, RECORD_SIZE);
@@ -590,12 +602,12 @@ void app_main(void)
         stt_transcribe_audio(audio_buffer, total_recorded, on_stt_result);
 
         /* Small pause */
-        vTaskDelay(pdMS_TO_TICKS(300));
+        vTaskDelay(pdMS_TO_TICKS(200));
 
         if (!ai_spoke) {
             ESP_LOGW(TAG, ">> [AI] No speech detected or transcribed. Please speak clearly into the microphone.");
             set_led_color(30, 0, 0); // Dim Red for empty cycle
-            vTaskDelay(pdMS_TO_TICKS(500));
+            vTaskDelay(pdMS_TO_TICKS(300));
         }
         
         set_led_color(0, 0, 50); // Blue when idle
