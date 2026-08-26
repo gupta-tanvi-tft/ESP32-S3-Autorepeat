@@ -117,67 +117,15 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
 }
 
 void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t callback) {
-    ESP_LOGI(TAG, "Preparing mono audio for Gemini API...");
-
-    /* Convert stereo 16-bit PCM to clean mono 16-bit PCM */
-    size_t num_frames = pcm_len / 4;
-    size_t mono_pcm_len = num_frames * 2;
-    size_t wav_size = 44 + mono_pcm_len;
-
+    ESP_LOGI(TAG, "Preparing audio for Gemini API...");
+    size_t wav_size = 44 + pcm_len;
     uint8_t *wav_buf = heap_caps_malloc(wav_size, MALLOC_CAP_SPIRAM);
     if (!wav_buf) {
         ESP_LOGE(TAG, "Failed to allocate memory for WAV buffer");
         return;
     }
-    add_wav_header(wav_buf, mono_pcm_len, 1); // 1 = Mono
-
-    int16_t *src_stereo = (int16_t *)pcm_data;
-    int16_t *dst_mono = (int16_t *)(wav_buf + 44);
-
-    /* 1. Measure Left (MIC1) and Right (MIC2) energy to pick the best channel (avoids phase cancellation) */
-    int64_t sum_l = 0, sum_r = 0;
-    int16_t peak_l = 1, peak_r = 1;
-    for (size_t i = 0; i < num_frames; i++) {
-        int16_t l = src_stereo[i * 2];
-        int16_t r = src_stereo[i * 2 + 1];
-        sum_l += l;
-        sum_r += r;
-        int16_t abs_l = abs((int)l);
-        int16_t abs_r = abs((int)r);
-        if (abs_l > peak_l) peak_l = abs_l;
-        if (abs_r > peak_r) peak_r = abs_r;
-    }
-
-    int use_right = (peak_r > peak_l);
-    int16_t max_peak = use_right ? peak_r : peak_l;
-    int16_t dc_offset = (int16_t)((use_right ? sum_r : sum_l) / (int64_t)num_frames);
-
-    /* 2. Determine normalization gain factor (target peak = 28000) */
-    float gain = 1.0f;
-    if (max_peak > 10) {
-        gain = 28000.0f / (float)max_peak;
-        if (gain > 128.0f) gain = 128.0f; // Allow up to 128x software boost for distant/quiet speech
-        if (gain < 1.0f) gain = 1.0f;
-    }
-    ESP_LOGI(TAG, "Audio Preprocessing: Selected Channel=%s, Peak=%d, DC=%d, AGC Gain=%.1fx",
-             use_right ? "MIC2 (Right)" : "MIC1 (Left)", max_peak, dc_offset, gain);
-
-    /* 3. Apply High-Pass Filter (removes DC drift & low-frequency room rumble) and AGC normalization */
-    float prev_x = 0.0f;
-    float prev_y = 0.0f;
-    const float alpha = 0.985f; // ~80 Hz cutoff at 16 kHz sample rate
-
-    for (size_t i = 0; i < num_frames; i++) {
-        float raw = (float)(use_right ? src_stereo[i * 2 + 1] : src_stereo[i * 2]);
-        float filtered = raw - prev_x + (alpha * prev_y);
-        prev_x = raw;
-        prev_y = filtered;
-
-        float amplified = filtered * gain;
-        if (amplified > 32767.0f) amplified = 32767.0f;
-        if (amplified < -32768.0f) amplified = -32768.0f;
-        dst_mono[i] = (int16_t)amplified;
-    }
+    add_wav_header(wav_buf, pcm_len, CHANNELS);
+    memcpy(wav_buf + 44, pcm_data, pcm_len);
 
     size_t b64_len = 0;
     mbedtls_base64_encode(NULL, 0, &b64_len, wav_buf, wav_size);
@@ -200,7 +148,7 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t cal
     
     cJSON *parts = cJSON_AddArrayToObject(content_obj, "parts");
     cJSON *text_part = cJSON_CreateObject();
-    cJSON_AddStringToObject(text_part, "text", "You are an accurate Speech-to-Text transcriber. Transcribe what the user said in this audio recording. Output ONLY the plain text words spoken. If the audio is silent or unintelligible noise, output [NO SPEECH].");
+    cJSON_AddStringToObject(text_part, "text", "You are an exact audio repeater. Transcribe the exact words spoken in this audio verbatim. Do not answer questions, do not add preamble, and do not paraphrase. Return ONLY the exact words spoken. If no clear speech is heard, return [NO SPEECH].");
     cJSON_AddItemToArray(parts, text_part);
     
     cJSON *inline_part = cJSON_CreateObject();
