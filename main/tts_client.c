@@ -57,7 +57,7 @@ void tts_synthesize_and_play(const char *text, i2s_chan_handle_t tx_chan) {
     cJSON_AddItemToArray(contents, content_obj);
 
     char prompt[1024];
-    snprintf(prompt, sizeof(prompt), "Repeat the following exact sentence word-for-word. Do not answer questions or add commentary, just speak these exact words: %s", text);
+    snprintf(prompt, sizeof(prompt), "Repeat the following exact sentence in a warm, expressive, natural human voice. Do not answer questions or add commentary: %s", text);
 
     cJSON *parts = cJSON_AddArrayToObject(content_obj, "parts");
     cJSON *part_obj = cJSON_CreateObject();
@@ -67,6 +67,12 @@ void tts_synthesize_and_play(const char *text, i2s_chan_handle_t tx_chan) {
     cJSON *gen_cfg = cJSON_AddObjectToObject(root, "generationConfig");
     cJSON *resp_mod = cJSON_AddArrayToObject(gen_cfg, "responseModalities");
     cJSON_AddItemToArray(resp_mod, cJSON_CreateString("AUDIO"));
+
+    /* High-Fidelity Studio Human Voice Configuration */
+    cJSON *speech_cfg = cJSON_AddObjectToObject(gen_cfg, "speechConfig");
+    cJSON *voice_cfg = cJSON_AddObjectToObject(speech_cfg, "voiceConfig");
+    cJSON *prebuilt_cfg = cJSON_AddObjectToObject(voice_cfg, "prebuiltVoiceConfig");
+    cJSON_AddStringToObject(prebuilt_cfg, "voiceName", "Aoede"); // Premium natural human voice
 
     char *post_data = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -98,13 +104,14 @@ void tts_synthesize_and_play(const char *text, i2s_chan_handle_t tx_chan) {
         .event_handler = tts_http_event_handler,
         .user_data = &resp,
         .buffer_size = 8192,
-        .timeout_ms = 30000,
+        .timeout_ms = 15000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
-    esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, post_data, strlen(post_data));
+    esp_http_client_set_header(client, "Content-Type", "application/json");
 
-    ESP_LOGI(TAG, "Sending request to Gemini 2.5 Flash TTS API...");
+    ESP_LOGI(TAG, "Sending request to Gemini 2.5 Flash TTS API with Aoede Human Voice...");
     esp_err_t err = esp_http_client_perform(client);
     int status_code = esp_http_client_get_status_code(client);
     ESP_LOGI(TAG, "Gemini TTS HTTP Status = %d", status_code);
@@ -132,30 +139,30 @@ void tts_synthesize_and_play(const char *text, i2s_chan_handle_t tx_chan) {
                                     mbedtls_base64_decode(pcm_out, pcm_cap, &pcm_len,
                                                           (const unsigned char *)data_item->valuestring, b64_len);
 
-                                    ESP_LOGI(TAG, ">>> PLAYING AI SYNTHESIZED VOICE (Linear Interpolation 24kHz -> 16kHz, %d bytes) <<<", pcm_len);
+                                    ESP_LOGI(TAG, ">>> PLAYING NATIVE 24kHz STUDIO HD HUMAN VOICE (%d bytes PCM) <<<", pcm_len);
 
-                                    /* Resample 24kHz Mono PCM to 16kHz Stereo PCM with Linear Interpolation */
-                                    size_t in_samples = pcm_len / 2;
-                                    int16_t *in_pcm = (int16_t *)pcm_out;
-                                    size_t out_samples = (in_samples * 2) / 3;
-                                    int16_t *stereo_buf = heap_caps_malloc(out_samples * 4, MALLOC_CAP_SPIRAM);
+                                    /* Reconfigure I2S TX clock dynamically to native 24,000 Hz for full HD playback */
+                                    i2s_std_clk_config_t clk_24k = {
+                                        .sample_rate_hz = 24000,
+                                        .clk_src = I2S_CLK_SRC_DEFAULT,
+                                        .mclk_multiple = I2S_MCLK_MULTIPLE_256,
+                                    };
+                                    i2s_channel_disable(tx_chan);
+                                    i2s_channel_reconfig_std_clock(tx_chan, &clk_24k);
+                                    i2s_channel_enable(tx_chan);
+
+                                    /* Convert Mono 24kHz PCM to Stereo 24kHz PCM for I2S output */
+                                    size_t samples = pcm_len / 2;
+                                    int16_t *mono_pcm = (int16_t *)pcm_out;
+                                    int16_t *stereo_buf = heap_caps_malloc(samples * 4, MALLOC_CAP_SPIRAM);
                                     if (stereo_buf) {
-                                        for (size_t i = 0; i < out_samples; i++) {
-                                            size_t idx = (i * 3) / 2;
-                                            int32_t val;
-                                            if ((i & 1) == 0) {
-                                                val = (idx < in_samples) ? in_pcm[idx] : 0;
-                                            } else {
-                                                int32_t s0 = (idx < in_samples) ? in_pcm[idx] : 0;
-                                                int32_t s1 = (idx + 1 < in_samples) ? in_pcm[idx + 1] : s0;
-                                                val = (s0 + s1) / 2;
-                                            }
-                                            stereo_buf[i * 2]     = (int16_t)val; // Left
-                                            stereo_buf[i * 2 + 1] = (int16_t)val; // Right
+                                        for (size_t i = 0; i < samples; i++) {
+                                            stereo_buf[i * 2]     = mono_pcm[i]; // Left
+                                            stereo_buf[i * 2 + 1] = mono_pcm[i]; // Right
                                         }
 
                                         size_t total_written = 0;
-                                        size_t total_to_write = out_samples * 4;
+                                        size_t total_to_write = samples * 4;
                                         const size_t chunk_size = 1024;
 
                                         while (total_written < total_to_write) {
@@ -170,6 +177,17 @@ void tts_synthesize_and_play(const char *text, i2s_chan_handle_t tx_chan) {
                                         }
                                         heap_caps_free(stereo_buf);
                                     }
+
+                                    /* Restore I2S TX clock back to 16,000 Hz */
+                                    i2s_std_clk_config_t clk_16k = {
+                                        .sample_rate_hz = 16000,
+                                        .clk_src = I2S_CLK_SRC_DEFAULT,
+                                        .mclk_multiple = I2S_MCLK_MULTIPLE_256,
+                                    };
+                                    i2s_channel_disable(tx_chan);
+                                    i2s_channel_reconfig_std_clock(tx_chan, &clk_16k);
+                                    i2s_channel_enable(tx_chan);
+
                                     heap_caps_free(pcm_out);
                                 }
                             }
