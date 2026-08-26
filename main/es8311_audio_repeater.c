@@ -78,7 +78,7 @@ static const char *TAG = "AUDIO_REPEATER";
 #define SAMPLE_RATE     16000          /* 16 kHz — good for voice */
 #define BITS_PER_SAMPLE 16
 #define CHANNELS        2              /* Stereo */
-#define RECORD_SECONDS  3
+#define RECORD_SECONDS  4
 #define BYTES_PER_SAMPLE (BITS_PER_SAMPLE / 8)
 #define RECORD_SIZE     (SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * RECORD_SECONDS)
 
@@ -586,37 +586,16 @@ void app_main(void)
         ai_spoke = false;
         /* ────── PHASE 1.5: TRANSCRIBE & AI REPEAT ────── */
         set_led_color(50, 0, 50); // Purple when transcribing
-        ESP_LOGI(TAG, ">> TRANSCRIBING & AI REPEATING... Please wait...");
+        ESP_LOGI(TAG, ">> [AI] Transcribing speech & generating Aoede Human Voice...");
         stt_transcribe_audio(audio_buffer, total_recorded, on_stt_result);
 
         /* Small pause */
         vTaskDelay(pdMS_TO_TICKS(300));
 
-        /* ────── PHASE 2: PLAYBACK (Only if AI did not speak) ────── */
         if (!ai_spoke) {
-            set_led_color(0, 50, 0); // Green when playing raw echo
-            ESP_LOGI(TAG, "<< PLAYING BACK RAW AUDIO ECHO...");
-
-            size_t total_played = 0;
-            while (total_played < total_recorded) {
-                size_t to_write = chunk_size;
-                if (total_played + to_write > total_recorded) {
-                    to_write = total_recorded - total_played;
-                }
-
-                size_t bytes_written = 0;
-                ret = i2s_channel_write(tx_chan,
-                                         audio_buffer + total_played,
-                                         to_write, &bytes_written,
-                                         pdMS_TO_TICKS(1000));
-                if (ret == ESP_OK) {
-                    total_played += bytes_written;
-                } else {
-                    ESP_LOGW(TAG, "  i2s_channel_write err: 0x%X", ret);
-                }
-            }
-
-            ESP_LOGI(TAG, "  Raw playback complete! %d bytes", total_played);
+            ESP_LOGW(TAG, ">> [AI] No speech detected or transcribed. Please speak clearly into the microphone.");
+            set_led_color(30, 0, 0); // Dim Red for empty cycle
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
         
         set_led_color(0, 0, 50); // Blue when idle
