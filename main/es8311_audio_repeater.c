@@ -266,17 +266,17 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x04, 0x01); // LRCK_H
     i2c_write_reg(ES7210_ADDR, 0x05, 0x00); // LRCK_L
 
-    /* Mic gains (~30dB) */
+    /* Mic gains (+35dB high-sensitivity capture) */
     i2c_write_reg(ES7210_ADDR, 0x4B, 0xFF);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0xFF);
     i2c_write_reg(ES7210_ADDR, 0x01, 0x00); 
     i2c_write_reg(ES7210_ADDR, 0x4B, 0x00);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0x00);
 
-    i2c_write_reg(ES7210_ADDR, 0x43, 0x14); // Reduced from 0x1A to 0x14 to prevent clipping
-    i2c_write_reg(ES7210_ADDR, 0x44, 0x14);
-    i2c_write_reg(ES7210_ADDR, 0x45, 0x14);
-    i2c_write_reg(ES7210_ADDR, 0x46, 0x14);
+    i2c_write_reg(ES7210_ADDR, 0x43, 0x24); // Boosted from 0x14 to 0x24 (+35dB)
+    i2c_write_reg(ES7210_ADDR, 0x44, 0x24);
+    i2c_write_reg(ES7210_ADDR, 0x45, 0x24);
+    i2c_write_reg(ES7210_ADDR, 0x46, 0x24);
 
     /* Power on mics */
     i2c_write_reg(ES7210_ADDR, 0x47, 0x08);
@@ -301,7 +301,7 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x00, 0x71);
     i2c_write_reg(ES7210_ADDR, 0x00, 0x41);
 
-    ESP_LOGI(TAG, "ES7210 microphone ADC initialized with ESPHome profile");
+    ESP_LOGI(TAG, "ES7210 microphone ADC initialized with +35dB gain");
     return ESP_OK;
 }
 
@@ -327,7 +327,7 @@ static esp_err_t es8311_init(void)
 
     /* Clock config (16kHz with 4.096MHz MCLK) */
     i2c_write_reg(ES8311_ADDR, 0x01, 0x3F);
-    i2c_write_reg(ES8311_ADDR, 0x02, 0x00); // FIX: Was 0x08 (mult x2). 0x00 is mult x1.
+    i2c_write_reg(ES8311_ADDR, 0x02, 0x00); // 0x00 is mult x1
     i2c_write_reg(ES8311_ADDR, 0x03, 0x10);
     i2c_write_reg(ES8311_ADDR, 0x04, 0x20);
     i2c_write_reg(ES8311_ADDR, 0x05, 0x00);
@@ -339,12 +339,12 @@ static esp_err_t es8311_init(void)
     i2c_write_reg(ES8311_ADDR, 0x09, 0x0C);
     i2c_write_reg(ES8311_ADDR, 0x0A, 0x0C);
 
-    /* Mic config (Optional, but match ESPHome anyway) */
+    /* Mic config */
     i2c_write_reg(ES8311_ADDR, 0x14, 0x1A);
     i2c_write_reg(ES8311_ADDR, 0x16, 0x00); // 0dB
 
-    /* Set volume to 0dB (0xC0) to prevent digital clipping/distortion */
-    i2c_write_reg(ES8311_ADDR, 0x32, 0xC0);
+    /* Set volume to +15.5dB (0xDF) for loud, clear speaker playback */
+    i2c_write_reg(ES8311_ADDR, 0x32, 0xDF);
 
     /* Power up analog circuitry */
     i2c_write_reg(ES8311_ADDR, 0x0D, 0x01);
@@ -352,8 +352,8 @@ static esp_err_t es8311_init(void)
     i2c_write_reg(ES8311_ADDR, 0x0E, 0x02);
     /* Power up DAC */
     i2c_write_reg(ES8311_ADDR, 0x12, 0x00);
-    /* Enable output to HP drive */
-    i2c_write_reg(ES8311_ADDR, 0x13, 0x10);
+    /* Enable line out mode for NS4150B PA amplifier */
+    i2c_write_reg(ES8311_ADDR, 0x13, 0x00);
     /* ADC Equalizer bypass, cancel DC offset in digital domain */
     i2c_write_reg(ES8311_ADDR, 0x1C, 0x6A);
     /* Bypass DAC equalizer */
@@ -588,9 +588,19 @@ void app_main(void)
         /* Small pause */
         vTaskDelay(pdMS_TO_TICKS(300));
 
-        /* ────── PHASE 2: PLAYBACK ────── */
+        /* ────── PHASE 2: PLAYBACK (BOOSTED) ────── */
         set_led_color(0, 50, 0); // Green when playing
-        ESP_LOGI(TAG, "<< PLAYING BACK...");
+        ESP_LOGI(TAG, "<< PLAYING BACK (WITH DIGITAL BOOST)...");
+
+        /* Apply software gain boost (x4) with soft saturation limiting */
+        int16_t *playback_samples = (int16_t *)audio_buffer;
+        size_t total_samples = total_recorded / 2;
+        for (size_t i = 0; i < total_samples; i++) {
+            int32_t amplified = (int32_t)playback_samples[i] * 4;
+            if (amplified > 32767) amplified = 32767;
+            if (amplified < -32768) amplified = -32768;
+            playback_samples[i] = (int16_t)amplified;
+        }
 
         size_t total_played = 0;
         while (total_played < total_recorded) {
