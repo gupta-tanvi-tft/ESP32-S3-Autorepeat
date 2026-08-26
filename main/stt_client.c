@@ -152,24 +152,31 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t cal
     int16_t max_peak = use_right ? peak_r : peak_l;
     int16_t dc_offset = (int16_t)((use_right ? sum_r : sum_l) / (int64_t)num_frames);
 
-    /* 2. Determine normalization gain factor (target peak = 24000) */
+    /* 2. Determine normalization gain factor (target peak = 28000) */
     float gain = 1.0f;
-    if (max_peak > 20) {
-        gain = 24000.0f / (float)max_peak;
-        if (gain > 32.0f) gain = 32.0f;
+    if (max_peak > 10) {
+        gain = 28000.0f / (float)max_peak;
+        if (gain > 128.0f) gain = 128.0f; // Allow up to 128x software boost for distant/quiet speech
         if (gain < 1.0f) gain = 1.0f;
     }
     ESP_LOGI(TAG, "Audio Preprocessing: Selected Channel=%s, Peak=%d, DC=%d, AGC Gain=%.1fx",
              use_right ? "MIC2 (Right)" : "MIC1 (Left)", max_peak, dc_offset, gain);
 
-    /* 3. Apply DC removal and AGC normalization on the selected clean channel */
+    /* 3. Apply High-Pass Filter (removes DC drift & low-frequency room rumble) and AGC normalization */
+    float prev_x = 0.0f;
+    float prev_y = 0.0f;
+    const float alpha = 0.985f; // ~80 Hz cutoff at 16 kHz sample rate
+
     for (size_t i = 0; i < num_frames; i++) {
-        int32_t raw = use_right ? src_stereo[i * 2 + 1] : src_stereo[i * 2];
-        int32_t sample = (raw - dc_offset);
-        sample = (int32_t)(sample * gain);
-        if (sample > 32767) sample = 32767;
-        if (sample < -32768) sample = -32768;
-        dst_mono[i] = (int16_t)sample;
+        float raw = (float)(use_right ? src_stereo[i * 2 + 1] : src_stereo[i * 2]);
+        float filtered = raw - prev_x + (alpha * prev_y);
+        prev_x = raw;
+        prev_y = filtered;
+
+        float amplified = filtered * gain;
+        if (amplified > 32767.0f) amplified = 32767.0f;
+        if (amplified < -32768.0f) amplified = -32768.0f;
+        dst_mono[i] = (int16_t)amplified;
     }
 
     size_t b64_len = 0;

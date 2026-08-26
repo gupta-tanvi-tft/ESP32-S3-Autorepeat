@@ -269,17 +269,17 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x04, 0x01); // LRCK_H
     i2c_write_reg(ES7210_ADDR, 0x05, 0x00); // LRCK_L
 
-    /* Mic gains (+30dB clean microphone capture) */
+    /* Mic gains (+37.5dB max clean unmuted capture) */
     i2c_write_reg(ES7210_ADDR, 0x4B, 0xFF);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0xFF);
     i2c_write_reg(ES7210_ADDR, 0x01, 0x00); 
     i2c_write_reg(ES7210_ADDR, 0x4B, 0x00);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0x00);
 
-    i2c_write_reg(ES7210_ADDR, 0x43, 0x1E); // 0x1E = +30dB clean capture
-    i2c_write_reg(ES7210_ADDR, 0x44, 0x1E);
-    i2c_write_reg(ES7210_ADDR, 0x45, 0x1E);
-    i2c_write_reg(ES7210_ADDR, 0x46, 0x1E);
+    i2c_write_reg(ES7210_ADDR, 0x43, 0x0E); // 0x0E = +37.5dB max hardware PGA sensitivity
+    i2c_write_reg(ES7210_ADDR, 0x44, 0x0E);
+    i2c_write_reg(ES7210_ADDR, 0x45, 0x0E);
+    i2c_write_reg(ES7210_ADDR, 0x46, 0x0E);
 
     /* Power on mics */
     i2c_write_reg(ES7210_ADDR, 0x47, 0x08);
