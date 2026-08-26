@@ -16,7 +16,7 @@
 // TODO: User must fill these in
 #define WIFI_SSID "TFTus-WiFi"
 #define WIFI_PASS "TFTus@123#$"
-#define GEMINI_MODEL "models/gemini-1.5-flash"
+#define GEMINI_MODEL "models/gemini-2.5-flash"
 
 #define SAMPLE_RATE 16000
 #define BITS_PER_SAMPLE 16
