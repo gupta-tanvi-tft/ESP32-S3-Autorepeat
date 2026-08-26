@@ -269,17 +269,17 @@ static esp_err_t es7210_init(void)
     i2c_write_reg(ES7210_ADDR, 0x04, 0x01); // LRCK_H
     i2c_write_reg(ES7210_ADDR, 0x05, 0x00); // LRCK_L
 
-    /* Mic gains (+35dB high-sensitivity capture) */
+    /* Mic gains (+30dB clean microphone capture) */
     i2c_write_reg(ES7210_ADDR, 0x4B, 0xFF);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0xFF);
     i2c_write_reg(ES7210_ADDR, 0x01, 0x00); 
     i2c_write_reg(ES7210_ADDR, 0x4B, 0x00);
     i2c_write_reg(ES7210_ADDR, 0x4C, 0x00);
 
-    i2c_write_reg(ES7210_ADDR, 0x43, 0x24); // Boosted from 0x14 to 0x24 (+35dB)
-    i2c_write_reg(ES7210_ADDR, 0x44, 0x24);
-    i2c_write_reg(ES7210_ADDR, 0x45, 0x24);
-    i2c_write_reg(ES7210_ADDR, 0x46, 0x24);
+    i2c_write_reg(ES7210_ADDR, 0x43, 0x1E); // 0x1E = +30dB clean capture
+    i2c_write_reg(ES7210_ADDR, 0x44, 0x1E);
+    i2c_write_reg(ES7210_ADDR, 0x45, 0x1E);
+    i2c_write_reg(ES7210_ADDR, 0x46, 0x1E);
 
     /* Power on mics */
     i2c_write_reg(ES7210_ADDR, 0x47, 0x08);
