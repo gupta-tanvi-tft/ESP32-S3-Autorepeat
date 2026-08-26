@@ -133,8 +133,34 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t cal
 
     int16_t *src_stereo = (int16_t *)pcm_data;
     int16_t *dst_mono = (int16_t *)(wav_buf + 44);
+
+    /* 1. Calculate DC bias and peak amplitude */
+    int64_t sum = 0;
+    int16_t max_peak = 1;
     for (size_t i = 0; i < num_frames; i++) {
-        dst_mono[i] = src_stereo[i * 2]; // Extract Left/primary mic channel
+        int32_t mixed = ((int32_t)src_stereo[i * 2] + (int32_t)src_stereo[i * 2 + 1]) / 2;
+        sum += mixed;
+        int16_t abs_val = abs((int)mixed);
+        if (abs_val > max_peak) max_peak = abs_val;
+    }
+    int16_t dc_offset = (int16_t)(sum / (int64_t)num_frames);
+
+    /* 2. Determine normalization gain factor (target peak = 22000) */
+    float gain = 1.0f;
+    if (max_peak > 20) {
+        gain = 22000.0f / (float)max_peak;
+        if (gain > 32.0f) gain = 32.0f; // Max 32x boost
+        if (gain < 1.0f) gain = 1.0f;
+    }
+    ESP_LOGI(TAG, "Audio Preprocessing: Peak=%d, DC=%d, AGC Boost=%.1fx", max_peak, dc_offset, gain);
+
+    /* 3. Apply DC removal, dual-mic mixing, and AGC normalization into mono buffer */
+    for (size_t i = 0; i < num_frames; i++) {
+        int32_t sample = (((int32_t)src_stereo[i * 2] + (int32_t)src_stereo[i * 2 + 1]) / 2) - dc_offset;
+        sample = (int32_t)(sample * gain);
+        if (sample > 32767) sample = 32767;
+        if (sample < -32768) sample = -32768;
+        dst_mono[i] = (int16_t)sample;
     }
 
     size_t b64_len = 0;
@@ -158,7 +184,7 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t cal
     
     cJSON *parts = cJSON_AddArrayToObject(content_obj, "parts");
     cJSON *text_part = cJSON_CreateObject();
-    cJSON_AddStringToObject(text_part, "text", "You are an exact audio repeater. Transcribe the exact words spoken in this audio verbatim. Do not answer questions, do not add preamble, and do not paraphrase. Return ONLY the exact words spoken. If no clear speech is heard, return [NO SPEECH].");
+    cJSON_AddStringToObject(text_part, "text", "Listen carefully to this audio recording and transcribe the exact words spoken. Output ONLY the plain transcription text. If there is no human speech, output [NO SPEECH].");
     cJSON_AddItemToArray(parts, text_part);
     
     cJSON *inline_part = cJSON_CreateObject();
