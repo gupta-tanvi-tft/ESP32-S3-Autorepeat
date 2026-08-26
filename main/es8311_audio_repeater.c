@@ -346,8 +346,8 @@ static esp_err_t es8311_init(void)
     i2c_write_reg(ES8311_ADDR, 0x14, 0x1A);
     i2c_write_reg(ES8311_ADDR, 0x16, 0x00); // 0dB
 
-    /* Set volume to comfortable level (+3dB / 0xC6) */
-    i2c_write_reg(ES8311_ADDR, 0x32, 0xC6);
+    /* Set volume to lower, gentle level (-5dB / 0xB6) */
+    i2c_write_reg(ES8311_ADDR, 0x32, 0xB6);
 
     /* Power up analog circuitry */
     i2c_write_reg(ES8311_ADDR, 0x0D, 0x01);
@@ -596,16 +596,6 @@ void app_main(void)
         if (!ai_spoke) {
             set_led_color(0, 50, 0); // Green when playing raw echo
             ESP_LOGI(TAG, "<< PLAYING BACK RAW AUDIO ECHO...");
-
-            /* Apply software gain boost (x2) with soft saturation limiting */
-            int16_t *playback_samples = (int16_t *)audio_buffer;
-            size_t total_samples = total_recorded / 2;
-            for (size_t i = 0; i < total_samples; i++) {
-                int32_t amplified = (int32_t)playback_samples[i] * 2;
-                if (amplified > 32767) amplified = 32767;
-                if (amplified < -32768) amplified = -32768;
-                playback_samples[i] = (int16_t)amplified;
-            }
 
             size_t total_played = 0;
             while (total_played < total_recorded) {
