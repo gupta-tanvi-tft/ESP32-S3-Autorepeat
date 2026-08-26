@@ -7,8 +7,8 @@
 #include "esp_heap_caps.h"
 #include "mbedtls/base64.h"
 #include "cJSON.h"
+#include "secrets.h"
 
-#define GEMINI_API_KEY "YOUR_API_KEY_HERE"
 static const char *TAG = "TTS_CLIENT";
 
 typedef struct {

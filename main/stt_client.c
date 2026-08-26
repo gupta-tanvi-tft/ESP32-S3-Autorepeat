@@ -11,11 +11,11 @@
 #include "esp_heap_caps.h"
 #include "mbedtls/base64.h"
 #include "cJSON.h"
+#include "secrets.h"
 
 // TODO: User must fill these in
 #define WIFI_SSID "TFTus-WiFi"
 #define WIFI_PASS "TFTus@123#$"
-#define GEMINI_API_KEY "YOUR_API_KEY_HERE"
 #define GEMINI_MODEL "models/gemini-1.5-flash"
 
 #define SAMPLE_RATE 16000
