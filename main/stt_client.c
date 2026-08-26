@@ -200,6 +200,8 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t cal
     int status_code = esp_http_client_get_status_code(client);
     ESP_LOGI(TAG, "HTTP Status = %d", status_code);
 
+    char *transcribed_speech = NULL;
+
     if (err == ESP_OK && status_code == 200 && resp.buffer && resp.len > 0) {
         cJSON *resp_json = cJSON_Parse(resp.buffer);
         if (resp_json) {
@@ -213,12 +215,7 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t cal
                         cJSON *part0 = cJSON_GetArrayItem(parts_arr, 0);
                         cJSON *text_item = cJSON_GetObjectItem(part0, "text");
                         if (text_item && text_item->valuestring) {
-                            ESP_LOGI(TAG, "==========================================");
-                            ESP_LOGI(TAG, ">>> TRANSCRIBED SPEECH: \"%s\"", text_item->valuestring);
-                            ESP_LOGI(TAG, "==========================================");
-                            if (callback) {
-                                callback(text_item->valuestring);
-                            }
+                            transcribed_speech = strdup(text_item->valuestring);
                         }
                     }
                 }
@@ -237,4 +234,15 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t cal
     }
     esp_http_client_cleanup(client);
     free(post_data);
+
+    if (transcribed_speech) {
+        ESP_LOGI(TAG, "==========================================");
+        ESP_LOGI(TAG, ">>> TRANSCRIBED SPEECH: \"%s\"", transcribed_speech);
+        ESP_LOGI(TAG, "==========================================");
+        if (callback) {
+            vTaskDelay(pdMS_TO_TICKS(100)); // Yield and feed task watchdog
+            callback(transcribed_speech);
+        }
+        free(transcribed_speech);
+    }
 }
