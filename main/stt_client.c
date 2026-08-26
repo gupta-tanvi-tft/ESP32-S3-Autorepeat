@@ -148,7 +148,7 @@ void stt_transcribe_audio(uint8_t *pcm_data, size_t pcm_len, stt_result_cb_t cal
     
     cJSON *parts = cJSON_AddArrayToObject(content_obj, "parts");
     cJSON *text_part = cJSON_CreateObject();
-    cJSON_AddStringToObject(text_part, "text", "You are an exact audio repeater. Transcribe the exact words spoken in this audio verbatim. Do not answer questions, do not add preamble, and do not paraphrase. Return ONLY the exact words spoken. If no clear speech is heard, return [NO SPEECH].");
+    cJSON_AddStringToObject(text_part, "text", "Transcribe all speech in this audio recording word for word. Output ONLY the transcribed words. Do not add notes or punctuation explanations.");
     cJSON_AddItemToArray(parts, text_part);
     
     cJSON *inline_part = cJSON_CreateObject();
