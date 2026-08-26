@@ -343,8 +343,8 @@ static esp_err_t es8311_init(void)
     i2c_write_reg(ES8311_ADDR, 0x14, 0x1A);
     i2c_write_reg(ES8311_ADDR, 0x16, 0x00); // 0dB
 
-    /* Set volume to +15.5dB (0xDF) for loud, clear speaker playback */
-    i2c_write_reg(ES8311_ADDR, 0x32, 0xDF);
+    /* Set volume to balanced level (+8dB / 0xD0) */
+    i2c_write_reg(ES8311_ADDR, 0x32, 0xD0);
 
     /* Power up analog circuitry */
     i2c_write_reg(ES8311_ADDR, 0x0D, 0x01);
@@ -592,11 +592,11 @@ void app_main(void)
         set_led_color(0, 50, 0); // Green when playing
         ESP_LOGI(TAG, "<< PLAYING BACK (WITH DIGITAL BOOST)...");
 
-        /* Apply software gain boost (x4) with soft saturation limiting */
+        /* Apply software gain boost (x2) with soft saturation limiting */
         int16_t *playback_samples = (int16_t *)audio_buffer;
         size_t total_samples = total_recorded / 2;
         for (size_t i = 0; i < total_samples; i++) {
-            int32_t amplified = (int32_t)playback_samples[i] * 4;
+            int32_t amplified = (int32_t)playback_samples[i] * 2;
             if (amplified > 32767) amplified = 32767;
             if (amplified < -32768) amplified = -32768;
             playback_samples[i] = (int16_t)amplified;
